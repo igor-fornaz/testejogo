@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Tower Defense v12.2</title>
+<style>
+  body { margin:0; background:#2c3e50; font-family:Arial; display:flex; height:100vh; overflow:hidden; }
+  canvas { background:#27ae60; border:3px solid #fff; display:block; cursor:pointer; }
+  #sidebar { width:280px; background:#34495e; padding:15px; color:#fff; flex-shrink:0; }
+.btn { padding:8px 12px; border:none; cursor:pointer; color:#fff; font-weight:bold; width:100%; margin-bottom:8px; }
+  #waveInfo { color:#f1c40f; font-size:20px; font-weight:bold; }
+  #towerMenu { background:#2c3e50; padding:10px; border-radius:8px; display:none; margin-top:10px; }
+.stat { font-size:14px; margin:3px 0; }
+  #waveTimer { color:#e74c3c; font-size:16px; }
+.disabled { opacity:0.5; cursor:not-allowed!important; }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div id="waveInfo">Onda: <span id="wave">1</span>/20 | Inimigos: <span id="enemiesLeft">0</span></div>
+  <div id="waveTimer"></div>
+  <div>💰 <span id="money">300</span> | ❤️ <span id="life">15</span></div>
+  <div>Dizimadora: <span id="diz">0/1</span> | Invocadora: <span id="inv">0/5</span></div>
+  <button id="btn_atiradora" class="btn" style="background:#3498db" onclick="selectTower('atiradora')">Atiradora $50</button>
+  <button id="btn_sniper" class="btn" style="background:#9b59b6" onclick="selectTower('sniper')">Sniper $120</button>
+  <button id="btn_dizimadora" class="btn" style="background:#e74c3c" onclick="selectTower('dizimadora')">Dizimadora $800</button>
+  <button id="btn_invocadora" class="btn" style="background:#2ecc71" onclick="selectTower('invocadora')">Invocadora $250</button>
+  <div id="towerMenu">
+    <h3 id="tm_title">Torre</h3>
+    <p>Nível: <span id="tm_level">1/5</span></p>
+    <div id="tm_stats"></div>
+    <button id="tm_upgrade" style="background:#27ae60" onclick="upgradeTower()">Melhorar</button>
+    <button id="tm_sell" style="background:#c0392b" onclick="sellTower()">Vender $<span id="tm_sell_val">0</span></button>
+  </div>
+</div>
+
+<canvas id="game" width="800" height="600"></canvas>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const GRID = 40;
+const MAP_W = 20, MAP_H = 15;
+
+let money = 300, life = 15, selectedTower = 'atiradora';
+let towers = [], enemies = [], bullets = [], minions = [], minionBullets = [];
+let dizCount = 0, invCount = 0;
+let selectedTowerObj = null;
+let wave = 1, waveQueue = [], waveInProgress = false;
+let spawnTimer = 0, waveTimer = 0;
+let pathPoints = [], reversePath = [];
+let gameWon = false;
+
+const map = [
+  [0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,1,1,1,1,1],
+  [0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,1],
+  [0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,1,0,0,0,1],
+  [0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,1],
+  [0,0,0,0,0,1,0,0,0,0,0,1,1,1,1,1,0,0,0,1],
+  [0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,0,0,1],
+  [0,0,0,0,0,1,1,1,1,1,1,1,0,0,0,0,0,0,0,1],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+];
+
+const TOWER_STATS = {
+  atiradora: {cost:50, range:120, dmg:8, cd:15, color:'#3498db'},
+  sniper: {cost:120, range:220, dmg:40, cd:80, color:'#9b59b6'},
+  dizimadora: {cost:800, range:200, dmg:25, cd:10, color:'#e74c3c'},
+  invocadora: {cost:250, range:0, dmg:0, cd:600, color:'#2ecc71', minionHP:20, minionRange:200, minionDmg:12, minionCd:40}
+};
+
+const ENEMY_TYPES = {
+  normal: {hp:60, speed:1.2, color:'#e74c3c', size:12, reward:10, name:'Normal'},
+  rapido: {hp:30, speed:2.5, color:'#f1c40f', size:10, reward:12, name:'Rápido'},
+  lento: {hp:250, speed:0.7, color:'#3498db', size:16, reward:20, name:'Lento'},
+  subchefe: {hp:3000, speed:0.9, color:'#9b59b6', size:20, reward:50, name:'Subchefe'},
+  chefe: {hp:25000,speed:0.6, color:'#000', size:28, reward:250, name:'CHEFE'}
+};
+
+function generatePath() {
+  pathPoints = [
+    {x:5,y:0}, {x:5,y:1}, {x:5,y:2}, {x:6,y:2}, {x:7,y:2}, {x:8,y:2}, {x:9,y:2}, {x:9,y:3},
+    {x:9,y:4}, {x:9,y:5}, {x:8,y:5}, {x:7,y:5}, {x:6,y:5}, {x:5,y:5}, {x:5,y:6}, {x:5,y:7},
+    {x:5,y:8}, {x:5,y:9}, {x:6,y:9}, {x:7,y:9}, {x:8,y:9}, {x:9,y:9}, {x:10,y:9}, {x:11,y:9},
+    {x:11,y:8}, {x:11,y:7}, {x:12,y:7}, {x:13,y:7}, {x:14,y:7}, {x:15,y:7}, {x:15,y:6}, {x:15,y:5},
+    {x:15,y:4}, {x:15,y:3}, {x:16,y:3}, {x:17,y:3}, {x:18,y:3}, {x:19,y:3}, {x:19,y:4}, {x:19,y:5},
+    {x:19,y:6}, {x:19,y:7}, {x:19,y:8}, {x:19,y:9}, {x:19,y:10}
+  ];
+  reversePath = [...pathPoints].reverse();
+}
+generatePath();
+
+function generateWave(waveNum){
+  waveQueue = [];
+  if(waveNum <= 3){
+    for(let i=0; i<5+waveNum*2; i++) waveQueue.push('normal');
+  }
+  else if(waveNum <= 5){
+    for(let i=0; i<8; i++) waveQueue.push('normal');
+    for(let i=0; i<4; i++) waveQueue.push('rapido');
+  }
+  else if(waveNum <= 9){
+    for(let i=0; i<10; i++) waveQueue.push('normal');
+    for(let i=0; i<5; i++) waveQueue.push('rapido');
+    for(let i=0; i<3; i++) waveQueue.push('lento');
+  }
+  else if(waveNum === 10){ // GARANTIDO: SÓ 1 SUBCHEFE
+    waveQueue.push('subchefe');
+  }
+  else if(waveNum <= 19){
+    for(let i=0; i<12; i++) waveQueue.push('normal');
+    for(let i=0; i<6; i++) waveQueue.push('rapido');
+    for(let i=0; i<4; i++) waveQueue.push('lento');
+    for(let i=0; i<2; i++) waveQueue.push('subchefe');
+  }
+  else if(waveNum === 20){
+    for(let i=0; i<5; i++) waveQueue.push('subchefe');
+    waveQueue.push('chefe');
+    waveTimer = 90 * 60;
+  }
+}
+
+function getTowerStats(type, level){
+  let base = TOWER_STATS[type];
+  if(type === 'invocadora'){
+    return {
+      cd: 600,
+      minionHP: Math.floor(base.minionHP * (1 + (level-1) * 0.3)),
+      minionRange: level >= 4? Math.floor(base.minionRange * (1 + (level-4) * 0.2)) : 0,
+      minionDmg: level >= 4? Math.floor(base.minionDmg * (1 + (level-4) * 0.4)) : 0,
+      minionCd: level >= 4? Math.floor(base.minionCd * (1 - (level-4) * 0.15)) : 0,
+      color: base.color
+    }
+  }
+  return {
+    range: Math.floor(base.range * (1 + (level-1) * 0.15)),
+    dmg: Math.floor(base.dmg * (1 + (level-1) * 0.25)),
+    cd: Math.floor(base.cd * (1 - (level-1) * 0.08)),
+    color: base.color
+  }
+}
+
+function selectTower(type){
+  if(type === 'dizimadora' && dizCount >= 1) return;
+  if(type === 'invocadora' && invCount >= 5) return;
+  selectedTower = type;
+  selectedTowerObj = null;
+  document.getElementById('towerMenu').style.display = 'none';
+}
+
+function updateButtons(){
+  document.getElementById('btn_dizimadora').classList.toggle('disabled', dizCount >= 1);
+  document.getElementById('btn_invocadora').classList.toggle('disabled', invCount >= 5);
+}
+
+canvas.addEventListener('click', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  let x = (e.clientX - rect.left - 3) * scaleX;
+  let y = (e.clientY - rect.top - 3) * scaleY;
+  let gx = Math.floor(x/GRID), gy = Math.floor(y/GRID);
+
+  let clickedTower = towers.find(t => t.gx === gx && t.gy === gy);
+  if(clickedTower){ openTowerMenu(clickedTower); return; }
+
+  let stats = TOWER_STATS[selectedTower];
+  if(money < stats.cost) return;
+  if(selectedTower === 'dizimadora' && dizCount >= 1) return;
+  if(selectedTower === 'invocadora' && invCount >= 5) return;
+  if(gy >= MAP_H || gx >= MAP_W || gx < 0 || gy < 0) return;
+  if(map[gy][gx] === 1) return;
+  if(towers.some(t => t.gx === gx && t.gy === gy)) return;
+
+  towers.push({gx,gy, x:gx*GRID+GRID/2, y:gy*GRID+GRID/2, type:selectedTower, level:1, cooldown: stats.cd});
+  money -= stats.cost;
+  if(selectedTower === 'dizimadora') dizCount++;
+  if(selectedTower === 'invocadora') invCount++;
+  updateButtons();
+});
+
+function openTowerMenu(tower){
+  selectedTowerObj = tower;
+  let stats = getTowerStats(tower.type, tower.level);
+  let nextStats = tower.level < 5? getTowerStats(tower.type, tower.level+1) : null;
+  let baseCost = TOWER_STATS[tower.type].cost;
+  let cost = Math.floor(baseCost * (0.6 + tower.level * 0.5));
+  if(tower.type === 'dizimadora') cost *= 2;
+  let sell = Math.floor(baseCost * tower.level * 0.7);
+
+  document.getElementById('tm_title').innerText = tower.type.toUpperCase() + " Lv" + tower.level;
+  document.getElementById('tm_level').innerText = `${tower.level}/5`;
+
+  let html = '';
+  if(tower.type === 'invocadora'){
+    html = `<div class="stat">Velocidade Geração: 10s</div>
+            <div class="stat">HP Minion: ${stats.minionHP} ${nextStats? `→ ${nextStats.minionHP}`:''}</div>`;
+    if(tower.level >= 4){
+      html += `<div class="stat">Dano Tiro: ${stats.minionDmg} ${nextStats? `→ ${nextStats.minionDmg}`:''}</div>
+               <div class="stat">Alcance Tiro: ${stats.minionRange} ${nextStats? `→ ${nextStats.minionRange}`:''}</div>
+               <div class="stat">Cadência Tiro: ${stats.minionCd} ${nextStats? `→ ${nextStats.minionCd}`:''}</div>`;
+    } else {
+      html += `<div class="stat">Tiro: Desbloqueia no Lv4</div>`;
+    }
+    html += `<div class="stat">Melhorar: $${cost}</div>`;
+  } else {
+    html = `<div class="stat">Dano: ${stats.dmg} ${nextStats? `→ ${nextStats.dmg}`:''}</div>
+            <div class="stat">Alcance: ${stats.range} ${nextStats? `→ ${nextStats.range}`:''}</div>
+            <div class="stat">Velocidade: ${stats.cd} ${nextStats? `→ ${nextStats.cd}`:''}</div>
+            <div class="stat">Melhorar: $${cost}</div>`;
+  }
+  document.getElementById('tm_stats').innerHTML = html;
+  document.getElementById('tm_sell_val').innerText = sell;
+  document.getElementById('tm_upgrade').style.display = tower.level >= 5? 'none' : 'block';
+  document.getElementById('towerMenu').style.display = 'block';
+}
+
+function upgradeTower(){
+  if(!selectedTowerObj) return;
+  let baseCost = TOWER_STATS[selectedTowerObj.type].cost;
+  let cost = Math.floor(baseCost * (0.6 + selectedTowerObj.level * 0.5));
+  if(selectedTowerObj.type === 'dizimadora') cost *= 2;
+  if(money < cost || selectedTowerObj.level >= 5) return;
+  money -= cost;
+  selectedTowerObj.level++;
+  openTowerMenu(selectedTowerObj);
+}
+
+function sellTower(){
+  if(!selectedTowerObj) return;
+  let baseCost = TOWER_STATS[selectedTowerObj.type].cost;
+  let sell = Math.floor(baseCost * selectedTowerObj.level * 0.7);
+  money += sell;
+  if(selectedTowerObj.type === 'dizimadora') dizCount--;
+  if(selectedTowerObj.type === 'invocadora') invCount--;
+  towers.splice(towers.indexOf(selectedTowerObj), 1);
+  document.getElementById('towerMenu').style.display = 'none';
+  updateButtons();
+}
+
+function startWave(){
+  if(wave > 20) return;
+  generateWave(wave);
+  waveInProgress = true;
+}
+function spawnEnemyFromWave(){
+  if(waveQueue.length === 0 && wave!== 20) return;
+
+  let typeKey = waveQueue.shift();
+  if(wave === 20 && waveQueue.length === 0 && waveTimer > 0){
+    let rand = Math.random();
+    if(rand < 0.5) typeKey = 'normal';
+    else if(rand < 0.75) typeKey = 'rapido';
+    else typeKey = 'lento';
+  }
+
+  let stats = ENEMY_TYPES[typeKey];
+  // FIX: Spawn com pathIndex -1 pra ele andar até o ponto 0 primeiro
+  enemies.push({type:typeKey, pathIndex:-1, x:pathPoints[0].x*GRID+GRID/2, y:pathPoints[0].y*GRID+GRID/2 - GRID, speed:stats.speed, hp:stats.hp, maxHp:stats.hp, color:stats.color, size:stats.size, reward:stats.reward});
+}
+
+function spawnMinion(tower){
+  let stats = getTowerStats(tower.type, tower.level);
+  minions.push({pathIndex:-1, x:reversePath[0].x*GRID+GRID/2, y:reversePath[0].y*GRID+GRID/2 + GRID, speed:2.2, hp:stats.minionHP, maxHp:stats.minionHP, level:tower.level, shootCd:0}); // FIX TBM
+}
+
+function moveEntity(entity, path){
+  // Se estiver no -1, anda até o ponto 0 primeiro
+  let targetIndex = entity.pathIndex + 1;
+  if(targetIndex >= path.length) return false;
+
+  let target = path[targetIndex];
+  let tx=target.x*GRID+GRID/2, ty=target.y*GRID+GRID/2;
+  let dx=tx-entity.x, dy=ty-entity.y, dist=Math.hypot(dx,dy);
+
+  if(dist > 2){
+    entity.x += dx/dist * entity.speed;
+    entity.y += dy/dist * entity.speed;
+  } else {
+    entity.pathIndex++; // Só avança quando chega perto
+  }
+  return true;
+}
+
+function drawHP(x,y,hp,maxHp){
+  let barWidth = 30;
+  if(maxHp > 1000) barWidth = 50;
+  ctx.fillStyle="#000"; ctx.fillRect(x-barWidth/2,y-22,barWidth,4);
+  ctx.fillStyle= hp/maxHp > 0.5? "#2ecc71" : "#e74c3c";
+  ctx.fillRect(x-barWidth/2,y-22,barWidth*(hp/maxHp),4);
+}
+
+function drawMap(){
+  for(let y=0; y<MAP_H; y++){
+    for(let x=0; x<MAP_W; x++){
+      ctx.fillStyle = map[y][x] === 1? "#8B4513" : "#27ae60";
+      ctx.fillRect(x*GRID, y*GRID, GRID, GRID);
+      ctx.strokeStyle="#000"; ctx.strokeRect(x*GRID, y*GRID, GRID, GRID);
+    }
+  }
+}
+
+function update(){
+  if(gameWon) return;
+  ctx.clearRect(0,0,800,600);
+  drawMap();
+
+  if(!waveInProgress && enemies.length === 0 && wave <= 20){
+    setTimeout(startWave, 3000);
+  }
+
+  if(waveInProgress){
+    spawnTimer++;
+    if(spawnTimer > 25){ spawnEnemyFromWave(); spawnTimer = 0; }
+
+    if(wave === 20){
+      waveTimer--;
+      document.getElementById('waveTimer').innerText = `Tempo: ${(waveTimer/60).toFixed(0)}s`;
+      if(waveTimer <= 0 && enemies.length === 0){
+        gameWon = true;
+        alert("VITÓRIA NO NIGHTMARE! Você é um deus!");
+      }
+    }
+
+    if(waveQueue.length === 0 && enemies.length === 0 && wave!== 20){
+      waveInProgress = false;
+      wave++;
+      money += 50 + wave*5;
+      document.getElementById('waveTimer').innerText = '';
+    }
+  }
+
+  towers.forEach(t => {
+    let stats = getTowerStats(t.type, t.level);
+    if(t === selectedTowerObj && stats.range > 0){
+      ctx.strokeStyle = "rgba(255,255,255,0.2)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, stats.range, 0, 6.28);
+      ctx.stroke();
+    }
+    ctx.fillStyle=stats.color;
+    ctx.beginPath();
+    ctx.arc(t.x,t.y,15,0,6.28);
+    ctx.fill();
+    t.cooldown--;
+    if(t.type!== 'invocadora' && t.cooldown <= 0){
+      let target = enemies.find(e => Math.hypot(e.x-t.x, e.y-t.y) < stats.range);
+      if(target){ bullets.push({x:t.x, y:t.y, target, dmg:stats.dmg}); t.cooldown=stats.cd; }
+    }
+    if(t.type === 'invocadora' && t.cooldown <= 0){ spawnMinion(t); t.cooldown = 600; }
+  });
+
+  bullets.forEach((b,i) => {
+    let dx=b.target.x-b.x, dy=b.target.y-b.y, dist=Math.hypot(dx,dy);
+    b.x += dx/dist * 7; b.y += dy/dist * 7;
+    ctx.fillStyle="#f1c40f"; ctx.beginPath(); ctx.arc(b.x,b.y,5,0,6.28); ctx.fill();
+    if(dist < 10){
+      b.target.hp -= b.dmg;
+      bullets.splice(i,1);
+      if(b.target.hp <= 0){
+        money += b.target.reward;
+        enemies.splice(enemies.indexOf(b.target),1);
+      }
+    }
+  });
+
+  minionBullets.forEach((b,i) => {
+    let dx=b.target.x-b.x, dy=b.target.y-b.y, dist=Math.hypot(dx,dy);
+    b.x += dx/dist * 6; b.y += dy/dist * 6;
+    ctx.fillStyle="#2ecc71"; ctx.beginPath(); ctx.arc(b.x,b.y,4,0,6.28); ctx.fill();
+    if(dist < 10){
+      b.target.hp -= b.dmg;
+      minionBullets.splice(i,1);
+      if(b.target.hp <= 0){
+        money += b.target.reward;
+        enemies.splice(enemies.indexOf(b.target),1);
+      }
+    }
+  });
+
+  for(let mi=minions.length-1; mi>=0; mi--){
+    let m = minions[mi];
+    if(!moveEntity(m, reversePath)){ minions.splice(mi,1); continue; }
+    ctx.fillStyle="#2ecc71"; ctx.beginPath(); ctx.arc(m.x,m.y,8,0,6.28); ctx.fill();
+    drawHP(m.x,m.y,m.hp,m.maxHp);
+
+    let stats = getTowerStats('invocadora', m.level);
+
+    if(m.level >= 4 && stats.minionCd > 0){
+      m.shootCd--;
+      if(m.shootCd <= 0){
+        let target = enemies.find(e => Math.hypot(e.x-m.x, e.y-m.y) < stats.minionRange);
+        if(target){
+          minionBullets.push({x:m.x, y:m.y, target, dmg:stats.minionDmg});
+          m.shootCd = stats.minionCd;
+        }
+      }
+    }
+
+    for(let ei=enemies.length-1; ei>=0; ei--){
+      let e = enemies[ei];
+      if(Math.hypot(e.x-m.x, e.y-m.y)<20){
+        let danoDoMinion = m.hp;
+        let danoDoInimigo = e.hp;
+
+        e.hp -= danoDoMinion;
+        m.hp -= danoDoInimigo;
+
+        if(e.hp <= 0){
+          money += e.reward;
+          enemies.splice(ei,1);
+        }
+        if(m.hp <= 0){
+          minions.splice(mi,1);
+        }
+        break;
+      }
+    }
+  }
+
+  enemies.forEach((e,i) => {
+    if(!moveEntity(e, pathPoints)){ life--; enemies.splice(i,1); return; }
+    ctx.fillStyle=e.color; ctx.beginPath(); ctx.arc(e.x,e.y,e.size,0,6.28); ctx.fill();
+    drawHP(e.x,e.y,e.hp,e.maxHp);
+    ctx.fillStyle="#fff"; ctx.font="10px Arial"; ctx.fillText(ENEMY_TYPES[e.type].name, e.x-15, e.y+e.size+5);
+  });
+
+  document.getElementById('money').innerText = money;
+  document.getElementById('life').innerText = life;
+  document.getElementById('wave').innerText = wave;
+  document.getElementById('enemiesLeft').innerText = enemies.length + waveQueue.length;
+  document.getElementById('diz').innerText = `${dizCount}/1`;
+  document.getElementById('inv').innerText = `${invCount}/5`;
+
+  if(life <= 0){
+    alert("GAME OVER! O NIGHTMARE te venceu.");
+    location.reload();
+  }
+
+  requestAnimationFrame(update);
+}
+updateButtons();
+update();
+</script>
+</body>
+</html>

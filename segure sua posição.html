@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<title>Fort Defense 5.7 - Limite Mantido</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+ body{margin:0;background:#7a5a3a;font-family:Arial;display:flex;justify-content:center;align-items:center;height:100vh;overflow:hidden}
+ #wrap{position:relative} canvas{background:#c2b280;border:4px solid #3b2314;border-radius:8px}
+ #ui{position:absolute;top:6px;left:8px;right:8px;display:flex;justify-content:space-between;font-weight:bold;color:#fff;font-size:12px;pointer-events:none;text-shadow:1px 1px 2px #000}
+ #menu,#bonus{position:absolute;inset:0;background:rgba(59,35,20,0.96);display:flex;flex-direction:column;justify-content:center;align-items:center;color:#fff;border-radius:8px;text-align:center;z-index:10;padding:10px}
+ #bonus{display:none} button{margin:4px;padding:10px 12px;border:3px solid transparent;border-radius:8px;cursor:pointer;font-weight:bold;min-width:200px;font-size:13px}
+.war{background:#e6a23c;color:#000}.sen{background:#4a90e2;color:#fff}.arc{background:#7bc67a;color:#000}
+.go{background:#2ecc71;width:320px;font-size:18px;border-color:#1a7a3a}
+.bonusBtn{background:#fff;color:#3b2314;min-width:210px}.bonusBtn:disabled{opacity:0.25}
+.bonusBtn.selectedP1{border-color:#1a4fa3!important;box-shadow:0 0 0 3px #1a4fa3, 0 0 10px #1a4fa3;transform:scale(1.05)}
+.bonusBtn.selectedP2{border-color:#7a1fa3!important;box-shadow:0 0 0 3px #7a1fa3, 0 0 10px #7a1fa3;transform:scale(1.05)}
+.selected{border-color:#fff!important;box-shadow:0 0 0 3px #ffd700, 0 0 12px #ffd700;transform:scale(1.05);}
+.pickInfo{font-size:13px;min-height:18px;margin-top:4px;color:#ffd700;font-weight:bold}
+ #bossWarning{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:36px;font-weight:bold;color:#ff0000;text-shadow:3px 3px 0 #000, -1px -1px 0 #000, 0 0 20px #ff0;display:none;z-index:5;pointer-events:none;animation: pulse 0.6s infinite}
+ @keyframes pulse{0%{transform:translate(-50%,-50%) scale(1)}50%{transform:translate(-50%,-50%) scale(1.2)}100%{transform:translate(-50%,-50%) scale(1)}}
+.bonusCol{background:rgba(0,0,0,0.35);padding:10px;border-radius:10px;min-width:250px}
+ #musicBtn{position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.5);color:#fff;border:1px solid #fff;padding:4px 8px;font-size:10px;border-radius:4px;cursor:pointer;z-index:20}
+</style>
+</head>
+<body>
+<div id="wrap">
+<canvas id="c" width="950" height="620"></canvas>
+<div id="ui"><div>🏰 FORTE <span id="fortInfo">Defenda!</span></div><div id="wave">ONDA 1</div><div><div id="c1info"></div><div id="c2info"></div></div></div>
+<div id="bossWarning"></div>
+<button id="musicBtn" onclick="toggleMusic()">🔊 Música ON</button>
+<div id="menu">
+<h2>🏰 DEFENDA O FORTE</h2>
+<p style="font-size:11px;color:#aaa">Portas 160px | Torres 54px</p>
+<div style="display:flex;gap:24px;flex-wrap:wrap;justify-content:center">
+<div style="background:rgba(0,0,0,0.3);padding:12px;border-radius:10px">
+<h3>P1 (WASD)</h3>
+<button id="p1-warrior" class="war" onclick="pick(1,'warrior')">⚔️ GUERREIRO (14)</button>
+<button id="p1-sentinel" class="sen" onclick="pick(1,'sentinel')">🛡️ SENTINELA (12)</button>
+<button id="p1-archer" class="arc" onclick="pick(1,'archer')">🏹 ARQUEIRO (18)</button>
+<div id="p1pick" class="pickInfo">❌ Nenhum selecionado</div>
+</div>
+<div style="background:rgba(0,0,0,0.3);padding:12px;border-radius:10px">
+<h3>P2 (SETAS)</h3>
+<button id="p2-warrior" class="war" onclick="pick(2,'warrior')">⚔️ GUERREIRO (14)</button>
+<button id="p2-sentinel" class="sen" onclick="pick(2,'sentinel')">🛡️ SENTINELA (12)</button>
+<button id="p2-archer" class="arc" onclick="pick(2,'archer')">🏹 ARQUEIRO (18)</button>
+<button id="p2-solo" class="selected" onclick="pick(2,null)" style="background:#ccc">👤 SOLO</button>
+<div id="p2pick" class="pickInfo">✅ SOLO</div>
+</div>
+</div>
+<button class="go" onclick="start()">▶️ DEFENDER FORTE</button>
+<p id="msg" style="color:#ff6b6b;font-weight:bold;min-height:18px"></p>
+</div>
+<div id="bonus">
+<h2>🛡️ ONDA VENCIDA! 🎉</h2>
+<p id="bonusDesc" style="color:#ffd700"></p>
+<p id="knockedInfo" style="color:#ff6b6b;font-size:12px"></p>
+<div style="display:flex;gap:18px;flex-wrap:wrap;justify-content:center">
+<div class="bonusCol">
+<h3 style="color:#6aaaff">🔵 P1 (WASD)</h3>
+<p id="p1deadInfo" style="font-size:11px"></p>
+<button id="p1-b-reforco" class="bonusBtn" onclick="chooseBonus(1,'reforco')">💪🔄 REFORÇO - Recupera 5 caídos</button>
+<button id="p1-b-infl" class="bonusBtn" onclick="chooseBonus(1,'influencia')">📣👥 INFLUÊNCIA - +2 soldados máx</button>
+<button id="p1-b-pat" class="bonusBtn" onclick="chooseBonus(1,'patente')">⭐📈 PATENTE - +20% vida e dano</button>
+<div id="p1-b-pick" class="pickInfo"></div>
+</div>
+<div class="bonusCol" id="p2bonusCol">
+<h3 style="color:#d88aff">🟣 P2 (SETAS)</h3>
+<p id="p2deadInfo" style="font-size:11px"></p>
+<button id="p2-b-reforco" class="bonusBtn" onclick="chooseBonus(2,'reforco')">💪🔄 REFORÇO - Recupera 5 caídos</button>
+<button id="p2-b-infl" class="bonusBtn" onclick="chooseBonus(2,'influencia')">📣👥 INFLUÊNCIA - +2 soldados máx</button>
+<button id="p2-b-pat" class="bonusBtn" onclick="chooseBonus(2,'patente')">⭐📈 PATENTE - +20% vida e dano</button>
+<div id="p2-b-pick" class="pickInfo"></div>
+</div>
+</div>
+<button class="go" style="margin-top:14px" onclick="confirmBonuses()">⚔️ CONFIRMAR E PRÓXIMA ONDA ➡️</button>
+<p id="bonusMsg" style="color:#ff6b6b;min-height:16px"></p>
+</div>
+</div>
+<script>
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
+const base={warrior:{hp:100,dmg:25,range:55,speed:2.2,r:10,color:'#d68c2c'},sentinel:{hp:160,dmg:12,range:65,speed:1.8,r:12,color:'#5b8bd0'},archer:{hp:60,dmg:18,range:150,speed:2.4,r:9,color:'#6fbf6a'}};
+let picks={1:null,2:null},commanders=[],soldiers=[],enemies=[],bossCommanders=[],bossSoldiers=[],projectiles=[],eProjectiles=[],beProjectiles=[],fortWalls=[],towers=[],doors=[],wave=1,gameRunning=false,keys={},maxS={1:0,2:0},dead={1:0,2:0},lvl={1:1,2:1},dmgM={1:1,2:1},hpM={1:1,2:1},patCount={1:0,2:0}, chosen={1:null,2:null}, knockedOut=[];
+const PATENTE_MAX=3;
+const FORT = {x:475, y:310, w:720, h:480, wallThick:22};
+const DOOR_W=160;
+function getInitialCount(type){ if(type=='warrior') return 14; if(type=='sentinel') return 12; if(type=='archer') return 18; return 10;}
+let audioCtx=null, musicEnabled=true, calmInterval=null, battleInterval=null, currentMusic='none';
+function initAudio(){ if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)(); }
+function stopMusic(){ if(calmInterval){ clearInterval(calmInterval); calmInterval=null; } if(battleInterval){ clearInterval(battleInterval); battleInterval=null; } currentMusic='none';}
+function playCalmMusic(){
+  if(!musicEnabled) return;
+  initAudio(); stopMusic(); currentMusic='calm';
+  let baseFreq=98;
+  calmInterval = setInterval(()=>{
+    if(!musicEnabled || currentMusic!='calm') return;
+    let t=audioCtx.currentTime + 0.05;
+    [0,7,12].forEach((semi,i)=>{
+      let osc=audioCtx.createOscillator(); let gain=audioCtx.createGain();
+      osc.type='sine'; osc.frequency.value=baseFreq * Math.pow(2,semi/12);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.linearRampToValueAtTime(0.26, t+0.8);
+      gain.gain.linearRampToValueAtTime(0.0001, t+5);
+      osc.connect(gain); gain.connect(audioCtx.destination); osc.start(t+i*0.22); osc.stop(t+5.2);
+    });
+  },3800);
+}
+function playBattleMusic(){
+  if(!musicEnabled) return;
+  initAudio(); stopMusic(); currentMusic='battle';
+  let beat=0;
+  battleInterval = setInterval(()=>{
+    if(!musicEnabled || currentMusic!='battle') return;
+    let t=audioCtx.currentTime + 0.02;
+    let k1=audioCtx.createOscillator(); let g1=audioCtx.createGain();
+    k1.type='sine';
+    k1.frequency.setValueAtTime(52,t); k1.frequency.exponentialRampToValueAtTime(22,t+0.5);
+    g1.gain.setValueAtTime(0.0001,t);
+    g1.gain.linearRampToValueAtTime(0.9,t+0.04);
+    g1.gain.exponentialRampToValueAtTime(0.0001,t+0.7);
+    k1.connect(g1); g1.connect(audioCtx.destination); k1.start(t); k1.stop(t+0.75);
+    if(beat%2==0){
+      let k2=audioCtx.createOscillator(); let g2=audioCtx.createGain();
+      k2.type='sine';
+      k2.frequency.setValueAtTime(65,t+0.06); k2.frequency.exponentialRampToValueAtTime(28,t+0.4);
+      g2.gain.setValueAtTime(0.0001,t+0.06);
+      g2.gain.linearRampToValueAtTime(0.62,t+0.1);
+      g2.gain.exponentialRampToValueAtTime(0.0001,t+0.52);
+      k2.connect(g2); g2.connect(audioCtx.destination); k2.start(t+0.06); k2.stop(t+0.55);
+    }
+    if(beat%4==0){
+      let t2=t+0.24;
+      let k3=audioCtx.createOscillator(); let g3=audioCtx.createGain();
+      k3.type='sine';
+      k3.frequency.setValueAtTime(48,t2); k3.frequency.exponentialRampToValueAtTime(20,t2+0.45);
+      g3.gain.setValueAtTime(0.0001,t2);
+      g3.gain.linearRampToValueAtTime(0.72,t2+0.05);
+      g3.gain.exponentialRampToValueAtTime(0.0001,t2+0.68);
+      k3.connect(g3); g3.connect(audioCtx.destination); k3.start(t2); k3.stop(t2+0.7);
+    }
+    beat++;
+  },560);
+}
+function toggleMusic(){ musicEnabled=!musicEnabled; document.getElementById('musicBtn').innerText = musicEnabled?'🔊 Música ON':'🔇 Música OFF'; if(!musicEnabled){ stopMusic(); } else{ if(gameRunning) playBattleMusic(); else playCalmMusic();}}
+function pick(p,t){ picks[p]=t; ['warrior','sentinel','archer','solo'].forEach(k=>{let el=document.getElementById('p'+p+'-'+k); if(el) el.classList.remove('selected');}); let id = t? 'p'+p+'-'+t : 'p'+p+'-solo'; let btn=document.getElementById(id); if(btn) btn.classList.add('selected'); let info=document.getElementById('p'+p+'pick'); if(t){ info.innerText='✅ '+t.toUpperCase()+' ('+getInitialCount(t)+')'; info.style.color='#2ecc71'; } else{ info.innerText='✅ SOLO'; info.style.color='#ccc'; } document.getElementById('msg').innerText='';}
+function start(){ if(!picks[1]){ document.getElementById('msg').innerText='⚠️ Selecione P1!'; return;} initAudio(); document.getElementById('menu').style.display='none'; init(); gameRunning=true; playBattleMusic(); requestAnimationFrame(loop);}
+function buildFort(){
+  fortWalls=[]; doors=[]; towers=[];
+  let fx=FORT.x-FORT.w/2, fy=FORT.y-FORT.h/2, fw=FORT.w, fh=FORT.h, t=FORT.wallThick;
+  fortWalls.push({x:fx, y:fy, w:fw/2 - DOOR_W/2, h:t});
+  fortWalls.push({x:fx+fw/2+DOOR_W/2, y:fy, w:fw/2 - DOOR_W/2, h:t});
+  fortWalls.push({x:fx, y:fy+fh - t, w:fw/2 - DOOR_W/2, h:t});
+  fortWalls.push({x:fx+fw/2+DOOR_W/2, y:fy+fh - t, w:fw/2 - DOOR_W/2, h:t});
+  fortWalls.push({x:fx, y:fy, w:t, h:fh/2 - DOOR_W/2});
+  fortWalls.push({x:fx, y:fy+fh/2+DOOR_W/2, w:t, h:fh/2 - DOOR_W/2});
+  fortWalls.push({x:fx+fw - t, y:fy, w:t, h:fh/2 - DOOR_W/2});
+  fortWalls.push({x:fx+fw - t, y:fy+fh/2+DOOR_W/2, w:t, h:fh/2 - DOOR_W/2});
+  doors.push({x:fx+fw/2 - DOOR_W/2, y:fy, w:DOOR_W, h:t, dir:'N'});
+  doors.push({x:fx+fw/2 - DOOR_W/2, y:fy+fh - t, w:DOOR_W, h:t, dir:'S'});
+  doors.push({x:fx, y:fy+fh/2 - DOOR_W/2, w:t, h:DOOR_W, dir:'W'});
+  doors.push({x:fx+fw - t, y:fy+fh/2 - DOOR_W/2, w:t, h:DOOR_W, dir:'E'});
+  let inset=80;
+  towers.push({x:fx+inset, y:fy+inset, r:54, type:'corner', id:0});
+  towers.push({x:fx+fw-inset, y:fy+inset, r:54, type:'corner', id:1});
+  towers.push({x:fx+inset, y:fy+fh-inset, r:54, type:'corner', id:2});
+  towers.push({x:fx+fw-inset, y:fy+fh-inset, r:54, type:'corner', id:3});
+  towers.push({x:FORT.x, y:FORT.y, r:50, type:'keep', id:4});
+}
+function makeComm(id,x,y,t){return{id,x,y,type:t,hp:300*hpM[id],maxHp:300*hpM[id],dmg:(base[t].dmg+10)*dmgM[id],range:base[t].range,speed:3.2,r:14,cd:0,color:id==1?'#1a4fa3':'#7a1fa3',lvl:lvl[id],onTower:false};}
+function makeSold(o,t,x,y,idx,total){ let radBase = (t=='archer'? 28 : 72) + Math.random()*8-4; let ang=(idx/total)*Math.PI*2; return{ownerId:o,type:t,x,y,hp:base[t].hp*hpM[o],maxHp:base[t].hp*hpM[o],dmg:base[t].dmg*dmgM[o],range:base[t].range,speed:base[t].speed,r:base[t].r,color:base[t].color,cd:0,fAng:ang,fRad:radBase}}
+function makeBossComm(bid,x,y,t,waveNum){let hp=350+waveNum*45; let dmg=(base[t].dmg+15)+waveNum*2; return{id:bid,x,y,type:t,hp:hp,maxHp:hp,dmg:dmg,range:base[t].range,speed:1.2+Math.random()*0.4,r:17,cd:0,color:'#8B0000',lvl:1+Math.floor(waveNum/5),isBoss:true,onTower:false};}
+function makeBossSold(ownerId,t,x,y,idx,total,waveNum){ let radBase = (t=='archer'? 28 : 72) + Math.random()*8-4; let ang=(idx/total)*Math.PI*2; let hp=base[t].hp+waveNum*8; let dmg=base[t].dmg+waveNum*0.8; return{ownerId:ownerId,type:t,x,y,hp:hp,maxHp:hp,dmg:dmg,range:base[t].range,speed:base[t].speed*0.85,r:base[t].r,color:'#a52a2a',cd:0,fAng:ang,fRad:radBase,isBossSold:true,onTower:false}}
+function reassignFormation(ownerId,list){ let own=list.filter(s=>s.ownerId==ownerId); own.forEach((s,i)=>{ let isArcher = s.type=='archer'; s.fAng=(i/own.length)*Math.PI*2; s.fRad=(isArcher? 28 : 72) + Math.random()*8-4;});}
+function init(){
+  commanders=[];soldiers=[];enemies=[];bossCommanders=[];bossSoldiers=[];projectiles=[];eProjectiles=[];beProjectiles=[];wave=1;dead={1:0,2:0};maxS={1:0,2:0};lvl={1:1,2:1};dmgM={1:1,2:1};hpM={1:1,2:1};patCount={1:0,2:0};chosen={1:null,2:null};knockedOut=[];
+  buildFort();
+  maxS[1]=getInitialCount(picks[1]);
+  if(picks[2]) maxS[2]=getInitialCount(picks[2]);
+  commanders.push(makeComm(1,FORT.x-60,FORT.y+30,picks[1]));
+  if(picks[2]) commanders.push(makeComm(2,FORT.x+60,FORT.y+30,picks[2]));
+  commanders.forEach(c=>{for(let i=0;i<maxS[c.id];i++){soldiers.push(makeSold(c.id,c.type,c.x+Math.random()*20-10,c.y+Math.random()*20-10,i,maxS[c.id]));}});
+  spawn(); playCalmMusic();
+}
+function makeEnemy(x,y,etype,waveNum){let hp,dmg,speed,range,r; if(etype=='militia'){hp=40+waveNum*9;dmg=9+waveNum*1.1;speed=0.9+Math.random()*0.3;range:45;r=10;} else if(etype=='warrior'){hp=60+waveNum*12;dmg=13+waveNum*1.4;speed=0.75+Math.random()*0.25;range:50;r=11;} else if(etype=='sentinel'){hp=90+waveNum*16;dmg=11+waveNum*1.2;speed=0.6+Math.random()*0.2;range=60;r=12;} else{hp=45+waveNum*9;dmg=10+waveNum;speed=0.7+Math.random()*0.25;range=140;r=10;} return{x,y,etype,hp,maxHp:hp,dmg,speed,range,r,cd:0,onTower:false};}
+function spawn(){
+  enemies=[];bossCommanders=[];bossSoldiers=[];eProjectiles=[];beProjectiles=[];
+  if(knockedOut.length>0){
+    knockedOut.forEach(ko=>{
+      let limite = ko.maxS;
+      maxS[ko.id]=limite;
+      let vivosAoRenascer = Math.max(3, Math.floor(limite/2));
+      dead[ko.id]=limite - vivosAoRenascer;
+      let comm=makeComm(ko.id, FORT.x + (ko.id==1?-60:60), FORT.y+30, ko.type);
+      comm.hp=comm.maxHp*0.6;
+      commanders.push(comm);
+      for(let i=0;i<vivosAoRenascer;i++){ soldiers.push(makeSold(ko.id, ko.type, comm.x+Math.random()*20-10, comm.y+Math.random()*20-10, i, vivosAoRenascer));}
+      reassignFormation(ko.id, soldiers);
+    });
+    knockedOut=[];
+  }
+  let isBossWave=(wave%5==0);
+  if(isBossWave){
+    let numBosses=Math.floor(wave/5);
+    let bw=document.getElementById('bossWarning'); bw.style.display='block'; bw.innerText='⚔️ '+numBosses+' CHEF'+(numBosses>1?'ES':'ÃO')+' INVADINDO! ⚔️'; setTimeout(()=>bw.style.display='none',3000);
+    let types=['warrior','sentinel','archer'];
+    for(let b=0;b<numBosses;b++){let door=doors[Math.floor(Math.random()*doors.length)]; let x=door.x+door.w/2+(Math.random()*40-20), y=door.y+door.h/2+(Math.random()*40-20); if(door.dir=='N') y-=60; if(door.dir=='S') y+=60; if(door.dir=='W') x-=60; if(door.dir=='E') x+=60; let t=types[Math.floor(Math.random()*types.length)]; let boss=makeBossComm(100+b,x,y,t,wave); bossCommanders.push(boss); let troopSize=8+Math.floor(wave/1.5); for(let i=0;i<troopSize;i++){bossSoldiers.push(makeBossSold(boss.id,t,x+Math.random()*30-15,y+Math.random()*30-15,i,troopSize,wave));}}
+    let extra=Math.floor(5+wave*2); for(let i=0;i<extra;i++){let door=doors[Math.floor(Math.random()*doors.length)]; let x=door.x+door.w/2+(Math.random()*30-15), y=door.y+door.h/2+(Math.random()*30-15); if(door.dir=='N') y-=50; if(door.dir=='S') y+=50; if(door.dir=='W') x-=50; if(door.dir=='E') x+=50; let roll=Math.random(), et=roll<0.4?'warrior':roll<0.7?'sentinel':'archer'; enemies.push(makeEnemy(x,y,et,wave));}
+    document.getElementById('wave').innerText='ONDA '+wave+' [CHEFE x'+numBosses+']';
+  }else{
+    let n=Math.floor(10+wave*6+Math.pow(wave,1.35)); if(wave>5)n+=8; if(wave>10)n+=15; if(wave>15)n+=20;
+    for(let i=0;i<n;i++){let door=doors[Math.floor(Math.random()*doors.length)]; let x=door.x+door.w/2+(Math.random()*50-25), y=door.y+door.h/2+(Math.random()*50-25); if(door.dir=='N') y-=40+Math.random()*30; if(door.dir=='S') y+=40+Math.random()*30; if(door.dir=='W') x-=40+Math.random()*30; if(door.dir=='E') x+=40+Math.random()*30; let roll=Math.random(),et; if(wave<2){et=roll<0.5?'militia':roll<0.8?'warrior':'archer';} else if(wave<4){if(roll<0.3)et='militia'; else if(roll<0.55)et='warrior'; else if(roll<0.75)et='sentinel'; else et='archer';} else if(wave<7){if(roll<0.2)et='militia'; else if(roll<0.45)et='warrior'; else if(roll<0.7)et='sentinel'; else et='archer';} else{if(roll<0.15)et='militia'; else if(roll<0.4)et='warrior'; else if(roll<0.7)et='sentinel'; else et='archer';} enemies.push(makeEnemy(x,y,et,wave));}
+    document.getElementById('wave').innerText='ONDA '+wave+' ('+enemies.length+' inimigos)';
+  }
+}
+function showBonusScreen(){
+  chosen={1:null,2:null};
+  document.getElementById('bonusDesc').innerText=(wave%5==0)?'🎉 CHEFE DERROTADO! 🎉':'';
+  let knockedText=''; if(knockedOut.length>0){ knockedText = '💀 Caídos: ' + knockedOut.map(k=>'P'+k.id+' ('+k.type+')').join(', ') + ' - Voltarão com 50% dos vivos, limite mantido!';}
+  document.getElementById('knockedInfo').innerText=knockedText;
+  let p1AliveNow = commanders.find(c=>c.id==1); let p2AliveNow = commanders.find(c=>c.id==2);
+  document.getElementById('p1deadInfo').innerText= p1AliveNow? '💀 Mortos: '+dead[1]+' | 🪖 Vivos: '+soldiers.filter(s=>s.ownerId==1).length+'/'+maxS[1]+' | ⭐ Pat: '+patCount[1]+'/3' : '💀 P1 CAÍDO - volta com 50% (limite '+maxS[1]+' mantido)';
+  if(picks[2]){ document.getElementById('p2bonusCol').style.display='block'; document.getElementById('p2deadInfo').innerText= p2AliveNow? '💀 Mortos: '+dead[2]+' | 🪖 Vivos: '+soldiers.filter(s=>s.ownerId==2).length+'/'+maxS[2]+' | ⭐ Pat: '+patCount[2]+'/3' : '💀 P2 CAÍDO - volta com 50% (limite '+maxS[2]+' mantido)';}else{ document.getElementById('p2bonusCol').style.display='none';}
+  ['p1-b-reforco','p1-b-infl','p1-b-pat','p2-b-reforco','p2-b-infl','p2-b-pat'].forEach(id=>{let el=document.getElementById(id); if(el){el.classList.remove('selectedP1','selectedP2'); el.disabled=false;}});
+  [1,2].forEach(pid=>{ let aliveNow = commanders.find(c=>c.id==pid); if(!aliveNow){ ['reforco','infl','pat'].forEach(k=>{let el=document.getElementById('p'+pid+'-b-'+k); if(el) el.disabled=true;});}else{ if(patCount[pid]>=PATENTE_MAX) document.getElementById('p'+pid+'-b-pat').disabled=true; if(dead[pid]==0) document.getElementById('p'+pid+'-b-reforco').disabled=true;}});
+  document.getElementById('p1-b-pick').innerText=''; document.getElementById('p2-b-pick').innerText=''; document.getElementById('bonusMsg').innerText=''; document.getElementById('bonus').style.display='flex'; playCalmMusic();
+}
+function chooseBonus(playerId,type){
+  let aliveNow = commanders.find(c=>c.id==playerId); if(!aliveNow){document.getElementById('bonusMsg').innerText='💀 P'+playerId+' caído!'; return;}
+  if(type=='patente'){let other=playerId==1?2:1; if(chosen[other]=='patente'){document.getElementById('bonusMsg').innerText='⚠️ Só um pode pegar ⭐ PATENTE!'; return;} if(patCount[playerId]>=PATENTE_MAX){document.getElementById('bonusMsg').innerText='⭐ MAX!'; return;}}
+  if(type=='reforco' && dead[playerId]==0){document.getElementById('bonusMsg').innerText='💪 Sem mortos!'; return;}
+  chosen[playerId]=type; ['reforco','infl','pat'].forEach(k=>{let el=document.getElementById('p'+playerId+'-b-'+k); if(el) el.classList.remove('selectedP1','selectedP2');});
+  let map={reforco:'reforco', influencia:'infl', patente:'pat'}; let el=document.getElementById('p'+playerId+'-b-'+map[type]); if(el) el.classList.add(playerId==1?'selectedP1':'selectedP2');
+  document.getElementById('p'+playerId+'-b-pick').innerText='✅ '+type.toUpperCase(); document.getElementById('bonusMsg').innerText='';
+  if(type=='patente'){let other=playerId==1?2:1; let otherPat=document.getElementById('p'+other+'-b-pat'); if(otherPat && chosen[other]!='patente'){otherPat.disabled=true;}}else{let other=playerId==1?2:1; let otherPat=document.getElementById('p'+other+'-b-pat'); if(otherPat && patCount[other]<PATENTE_MAX && chosen[other]!='patente'){let someonePat=(chosen[1]=='patente'||chosen[2]=='patente'); if(!someonePat) otherPat.disabled=false;}}
+}
+function applyBonusForPlayer(pid,type){
+  if(!type) return; let comm=commanders.find(c=>c.id==pid); if(!comm) return;
+  if(type=='reforco'){let rev=Math.min(5,dead[pid]); for(let i=0;i<rev;i++){let tot=soldiers.filter(s=>s.ownerId==pid).length; soldiers.push(makeSold(pid,comm.type,comm.x+Math.random()*20-10,comm.y+Math.random()*20-10,tot,tot+1)); dead[pid]--;} reassignFormation(pid,soldiers);}
+  else if(type=='influencia'){maxS[pid]+=2; for(let i=0;i<2;i++){let tot=soldiers.filter(s=>s.ownerId==pid).length; soldiers.push(makeSold(pid,comm.type,comm.x+Math.random()*20-10,comm.y+Math.random()*20-10,tot,tot+1)); dead[pid]=Math.max(0,dead[pid]-1);} reassignFormation(pid,soldiers);}
+  else if(type=='patente'){if(patCount[pid]>=PATENTE_MAX) return; patCount[pid]++; dmgM[pid]*=1.2; hpM[pid]*=1.2; lvl[pid]++; comm.maxHp*=1.2; comm.dmg*=1.2; comm.hp=comm.maxHp; soldiers.filter(s=>s.ownerId==pid).forEach(s=>{s.dmg*=1.2; s.maxHp*=1.2; s.hp=s.maxHp;});}
+}
+function confirmBonuses(){
+  let p1Alive = commanders.find(c=>c.id==1); let p2Alive = commanders.find(c=>c.id==2);
+  if(p1Alive &&!chosen[1]){document.getElementById('bonusMsg').innerText='⚠️ 🔵 P1 escolha!'; return;}
+  if(picks[2] && p2Alive &&!chosen[2]){document.getElementById('bonusMsg').innerText='⚠️ 🟣 P2 escolha!'; return;}
+  if(p1Alive) applyBonusForPlayer(1,chosen[1]); if(p2Alive) applyBonusForPlayer(2,chosen[2]);
+  if(p1Alive) p1Alive.hp=p1Alive.maxHp; if(p2Alive) p2Alive.hp=p2Alive.maxHp;
+  document.getElementById('bonus').style.display='none'; wave++; spawn(); gameRunning=true; playBattleMusic(); requestAnimationFrame(loop);
+}
+window.addEventListener('keydown',e=>keys[e.key.toLowerCase()]=true);window.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+function isCollidingWithWall(x,y,r){for(let w of fortWalls){if(x+r > w.x && x-r < w.x+w.w && y+r > w.y && y-r < w.y+w.h) return true;} return false;}
+function getNearestDoor(x,y){let best=doors[0], bestD=dist({x,y}, {x:best.x+best.w/2, y:best.y+best.h/2}); doors.forEach(d=>{let cx=d.x+d.w/2, cy=d.y+d.h/2; let dd=dist({x,y},{x:cx,y:cy}); if(dd<bestD){bestD=dd; best=d;}}); return best;}
+function checkTowerBonus(entity){entity.onTower=false; for(let tw of towers){if(dist(entity, tw) < tw.r){entity.onTower=true; break;}}}
+function drawEquipment(x,y,type,level,isComm,isBoss){
+ let extra=isBoss?2:0;
+ if(type=='sentinel'){
+   let sw=isComm?18+extra:15+extra, sh=isComm?32+extra*2:28+extra*2, sx=x-18-extra/2, sy=y-12-extra, border, inside;
+   if(isBoss){border='#FF0000';inside='#4B0000';} else if(level==1){border='#888888';inside='#8B5A2B';}else if(level==2){border='#C0C0C0';inside='#8B5A2B';}else if(level==3){border='#C0C0C0';inside='#5C3317';}else{border='#FFD700';inside='#0F2A4D';}
+   ctx.fillStyle=border;ctx.fillRect(sx,sy,sw,sh);ctx.fillStyle=inside;ctx.fillRect(sx+2,sy+2,sw-4,sh-4);
+   if(level>=3||isBoss){ctx.fillStyle='white';ctx.fillRect(sx+sw/2-1.5,sy+5,3,sh-10);ctx.fillRect(sx+4,sy+sh/2-1.5,sw-8,3);}
+   let handleColor=isBoss?'#2A0000':(level==3)?'#4A2C0A':(level==4)?'#C0C0C0':'#8B5A2B'; let tipColor=isBoss?'#FF0000':(level==1)?'#888888':(level==4)?'#FFD700':'#C0C0C0';
+   ctx.fillStyle=handleColor;ctx.fillRect(x+9+extra,y-16-extra,3.5+extra,32+extra*2); ctx.fillStyle=tipColor;ctx.beginPath();ctx.moveTo(x+10.7+extra,y-21-extra);ctx.lineTo(x+5+extra,y-13);ctx.lineTo(x+16.5+extra,y-13);ctx.closePath();ctx.fill();
+ }else if(type=='warrior'){
+   let shieldR=isComm?14+extra:11+extra, border, inside;
+   if(isBoss){border='#FF0000';inside='#4B0000';} else if(level==1){border='#888888';inside='#8B5A2B';}else if(level==2){border='#C0C0C0';inside='#8B5A2B';}else if(level==3){border='#C0C0C0';inside='#5C3317';}else{border='#FFD700';inside='#0F2A4D';}
+   ctx.fillStyle=border;ctx.beginPath();ctx.arc(x-13-extra,y+2,shieldR,0,6.28);ctx.fill(); ctx.fillStyle=inside;ctx.beginPath();ctx.arc(x-13-extra,y+2,shieldR-3,0,6.28);ctx.fill();
+   if(level>=3||isBoss){ctx.fillStyle='white';ctx.beginPath();ctx.arc(x-13-extra,y+2,3.5,0,6.28);ctx.fill();}
+   let handleColor=isBoss?'#2A0000':(level==4)?'#C0C0C0':(level==3)?'#4A2C0A':'#8B5A2B'; let bladeColor=isBoss?'#FF0000':(level==1)?'#888888':(level==4)?'#FFD700':'#C0C0C0';
+   let bladeH=(level==3)?22:19,bladeW=(level==3)?4:3,swordX=x+8+extra;
+   ctx.fillStyle=handleColor;ctx.fillRect(swordX,y+2,bladeW,7);ctx.fillRect(swordX-2,y+1,bladeW+4,3); ctx.fillStyle=bladeColor;ctx.fillRect(swordX,y-bladeH+2,bladeW,bladeH); ctx.beginPath();ctx.moveTo(swordX+bladeW/2,y-bladeH-2);ctx.lineTo(swordX-1.5,y-bladeH+2);ctx.lineTo(swordX+bladeW+1.5,y-bladeH+2);ctx.closePath();ctx.fill();
+ }else if(type=='archer'){
+   let quiverColor=isBoss?'#2A0000':(level==1)?'#3B2A1A':'#0F2A4D'; ctx.fillStyle=quiverColor;ctx.fillRect(x-9-extra,y-7,6+extra,11+extra);
+   let bowColor=isBoss?'#FF0000':(level==1||level==2)?'#8B5A2B':(level==3)?'#C0C0C0':'#FFD700'; let bowSize=(level==2||level==3||level==4)?11:9;
+   ctx.strokeStyle=bowColor;ctx.lineWidth=3;ctx.beginPath();ctx.arc(x+11+extra/2,y,bowSize+extra,-1.1,1.1);ctx.stroke();
+   let tipColor=isBoss?'#FF0000':(level==1)?'#888888':(level==4)?'#FFD700':'#C0C0C0'; ctx.fillStyle='#8B5A2B';ctx.fillRect(x+1,y-0.8,11,1.6); ctx.fillStyle=tipColor;ctx.beginPath();ctx.moveTo(x+14,y);ctx.lineTo(x+10,y-2.5);ctx.lineTo(x+10,y+2.5);ctx.closePath();ctx.fill();
+ }
+}
+function drawEnemyEquip(x,y,etype){
+ if(etype=='militia'){ctx.fillStyle='#8B5A2B';ctx.fillRect(x+6,y+2,2.5,6); ctx.fillStyle='#888888';ctx.fillRect(x+6,y-12,2.5,14); ctx.beginPath();ctx.moveTo(x+7.2,y-15);ctx.lineTo(x+4.5,y-11);ctx.lineTo(x+10,y-11);ctx.closePath();ctx.fill();}
+ else if(etype=='warrior'){ctx.fillStyle='#888888';ctx.beginPath();ctx.arc(x-12,y+2,11,0,6.28);ctx.fill(); ctx.fillStyle='#B22222';ctx.beginPath();ctx.arc(x-12,y+2,8,0,6.28);ctx.fill(); ctx.fillStyle='#8B5A2B';ctx.fillRect(x+6,y+2,2.5,6); ctx.fillStyle='#888888';ctx.fillRect(x+6,y-12,2.5,14); ctx.beginPath();ctx.moveTo(x+7.2,y-15);ctx.lineTo(x+4.5,y-11);ctx.lineTo(x+10,y-11);ctx.closePath();ctx.fill();}
+ else if(etype=='sentinel'){ctx.fillStyle='#888888';ctx.fillRect(x-18,y-12,14,26); ctx.fillStyle='#8B5A2B';ctx.fillRect(x-16,y-10,10,22); ctx.fillStyle='#8B5A2B';ctx.fillRect(x+8,y-16,3,32); ctx.fillStyle='#888888';ctx.beginPath();ctx.moveTo(x+9.5,y-21);ctx.lineTo(x+5,y-14);ctx.lineTo(x+14,y-14);ctx.closePath();ctx.fill();}
+ else if(etype=='archer'){ctx.strokeStyle='#8B5A2B';ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(x+10,y,9,-1.1,1.1);ctx.stroke(); ctx.fillStyle='#8B5A2B';ctx.fillRect(x+1,y-0.7,10,1.4); ctx.fillStyle='#888888';ctx.beginPath();ctx.moveTo(x+12.5,y);ctx.lineTo(x+8.5,y-2.5);ctx.lineTo(x+8.5,y+2.5);ctx.closePath();ctx.fill(); ctx.fillStyle='#3B2A1A';ctx.fillRect(x-9,y-6,5,9);}
+}
+function loop(){if(!gameRunning)return;
+commanders.forEach(c=>{
+  let ox=c.x, oy=c.y;
+  if(c.id==1){if(keys['w'])c.y-=c.speed;if(keys['s'])c.y+=c.speed;if(keys['a'])c.x-=c.speed;if(keys['d'])c.x+=c.speed;}else{if(keys['arrowup'])c.y-=c.speed;if(keys['arrowdown'])c.y+=c.speed;if(keys['arrowleft'])c.x-=c.speed;if(keys['arrowright'])c.x+=c.speed;}
+  if(isCollidingWithWall(c.x,c.y,c.r)){c.x=ox; c.y=oy;}
+  c.x=Math.max(10,Math.min(940,c.x)); c.y=Math.max(10,Math.min(610,c.y));
+  checkTowerBonus(c);
+  if(c.cd>0)c.cd--;
+  let allE=[...enemies,...bossCommanders,...bossSoldiers];
+  let effectiveRange=c.range + (c.onTower && c.type=='archer'? 80 : 0);
+  let t=allE.find(en=>dist(c,en)<effectiveRange);
+  if(t&&c.cd<=0){if(c.type=='archer'){let dmg=c.dmg*(c.onTower?1.2:1); projectiles.push({x:c.x+8,y:c.y,tx:t.x,ty:t.y,dmg:dmg,s:7});} else t.hp-=c.dmg; c.cd=c.type=='archer'?28:26;}
+});
+soldiers.forEach(s=>{
+  let owner=commanders.find(c=>c.id==s.ownerId); if(!owner) return;
+  let tx=owner.x+Math.cos(s.fAng)*s.fRad; let ty=owner.y+Math.sin(s.fAng)*s.fRad;
+  let dToForm=Math.hypot(tx-s.x, ty-s.y);
+  if(dToForm>3){
+    let ang=Math.atan2(ty-s.y, tx-s.x); let move=Math.min(s.speed*0.9, dToForm*0.12);
+    if(move>0.08){
+      let nx=s.x+Math.cos(ang)*move, ny=s.y+Math.sin(ang)*move;
+      if(!isCollidingWithWall(nx,ny,s.r)){s.x=nx; s.y=ny;}
+      else{
+        if(!isCollidingWithWall(s.x+Math.cos(ang)*move, s.y, s.r)) s.x+=Math.cos(ang)*move;
+        else if(!isCollidingWithWall(s.x, s.y+Math.sin(ang)*move, s.r)) s.y+=Math.sin(ang)*move;
+      }
+    }
+  }
+  checkTowerBonus(s);
+  if(s.cd>0)s.cd--;
+  let allE=[...enemies,...bossCommanders,...bossSoldiers];
+  let effectiveRange=s.range + (s.onTower && s.type=='archer'? 80 : 0);
+  let tgt=allE.find(en=>dist(s,en)<effectiveRange);
+  if(tgt&&s.cd<=0){
+    if(s.type=='archer'){let dmg=s.dmg*(s.onTower?1.2:1); projectiles.push({x:s.x+8,y:s.y,tx:tgt.x,ty:tgt.y,dmg:dmg,s:6});}
+    else tgt.hp-=s.dmg;
+    s.cd=s.type=='archer'?40:34;
+  }
+});
+function enemyMove(en){
+  let cands=[...commanders,...soldiers],best=null,bestD=Infinity;
+  cands.forEach(c=>{let d=dist(en,c);if(d<bestD){bestD=d;best=c;}});
+  if(!best){best={x:FORT.x,y:FORT.y};}
+  let insideFort = (en.x > FORT.x-FORT.w/2+FORT.wallThick && en.x < FORT.x+FORT.w/2-FORT.wallThick && en.y > FORT.y-FORT.h/2+FORT.wallThick && en.y < FORT.y+FORT.h/2-FORT.wallThick);
+  let targetX=best.x, targetY=best.y;
+  if(!insideFort){
+    let targetInside = (best.x > FORT.x-FORT.w/2+FORT.wallThick && best.x < FORT.x+FORT.w/2-FORT.wallThick && best.y > FORT.y-FORT.h/2+FORT.wallThick && best.y < FORT.y+FORT.h/2-FORT.wallThick);
+    if(targetInside ||!commanders.length){
+      let door=getNearestDoor(en.x,en.y);
+      targetX=door.x+door.w/2; targetY=door.y+door.h/2;
+      if(dist(en,{x:targetX,y:targetY})<30){
+        if(door.dir=='N') targetY= FORT.y-FORT.h/2+40;
+        else if(door.dir=='S') targetY= FORT.y+FORT.h/2-40;
+        else if(door.dir=='W') targetX= FORT.x-FORT.w/2+40;
+        else if(door.dir=='E') targetX= FORT.x+FORT.w/2-40;
+      }
+    }
+  }
+  let ang=Math.atan2(targetY-en.y,targetX-en.x);
+  let nx=en.x+Math.cos(ang)*en.speed, ny=en.y+Math.sin(ang)*en.speed;
+  if(!isCollidingWithWall(nx,ny,en.r)){en.x=nx; en.y=ny;}
+  else{
+    let door=getNearestDoor(en.x,en.y);
+    let angDoor=Math.atan2(door.y+door.h/2 - en.y, door.x+door.w/2 - en.x);
+    nx=en.x+Math.cos(angDoor)*en.speed; ny=en.y+Math.sin(angDoor)*en.speed;
+    if(!isCollidingWithWall(nx,ny,en.r)){en.x=nx; en.y=ny;}
+  }
+  checkTowerBonus(en);
+}
+enemies.forEach(en=>{
+  let cands=[...commanders,...soldiers],best=null,bestD=Infinity;
+  cands.forEach(c=>{let d=dist(en,c); if(d<bestD){bestD=d; best=c;}});
+  if(!best){best={x:FORT.x,y:FORT.y,hp:1000}; bestD=dist(en,best);}
+  if(en.etype=='archer'){
+    if(en.cd<=0 && bestD < (en.range + (en.onTower?80:0))){eProjectiles.push({x:en.x,y:en.y,tx:best.x,ty:best.y,dmg:en.dmg*(en.onTower?1.2:1),s:5.5}); en.cd=70;}
+    if(bestD> en.range-20){enemyMove(en);}
+    else if(bestD<70){let ang=Math.atan2(best.y-en.y,best.x-en.x); let nx=en.x-Math.cos(ang)*en.speed*0.5, ny=en.y-Math.sin(ang)*en.speed*0.5; if(!isCollidingWithWall(nx,ny,en.r)){en.x=nx; en.y=ny;}}
+  }else{
+    if(bestD>38){enemyMove(en);}
+    else {if(en.cd<=0){best.hp-=en.dmg; en.cd=55;}}
+  }
+  if(en.cd>0)en.cd--;
+});
+bossCommanders.forEach(bc=>{
+  let cands=[...commanders,...soldiers],best=null,bestD=Infinity;
+  cands.forEach(c=>{let d=dist(bc,c); if(d<bestD){bestD=d; best=c;}});
+  if(!best){best={x:FORT.x,y:FORT.y,hp:1000}; bestD=dist(bc,best);}
+  if(bestD>40){let ang=Math.atan2(best.y-bc.y,best.x-bc.x); let nx=bc.x+Math.cos(ang)*bc.speed, ny=bc.y+Math.sin(ang)*bc.speed; if(!isCollidingWithWall(nx,ny,bc.r)){bc.x=nx; bc.y=ny;} else {let door=getNearestDoor(bc.x,bc.y); let angD=Math.atan2(door.y-bc.y,door.x-bc.x); nx=bc.x+Math.cos(angD)*bc.speed; ny=bc.y+Math.sin(angD)*bc.speed; if(!isCollidingWithWall(nx,ny,bc.r)){bc.x=nx; bc.y=ny;}}}
+  checkTowerBonus(bc);
+  if(bc.cd>0)bc.cd--;
+  let effRange=bc.range + (bc.onTower && bc.type=='archer'? 80 : 0);
+  if(bestD < effRange && bc.cd<=0){if(bc.type=='archer'){beProjectiles.push({x:bc.x,y:bc.y,tx:best.x,ty:best.y,dmg:bc.dmg*(bc.onTower?1.2:1),s:6});}else{best.hp-=bc.dmg;} bc.cd=bc.type=='archer'?35:30;}
+});
+bossSoldiers.forEach(bs=>{
+  let owner=bossCommanders.find(b=>b.id==bs.ownerId);
+  if(!owner){
+    let cands=[...commanders,...soldiers],best=null,bestD=Infinity;
+    cands.forEach(c=>{let d=dist(bs,c); if(d<bestD){bestD=d; best=c;}});
+    if(!best){best={x:FORT.x,y:FORT.y,hp:1000}; bestD=dist(bs,best);}
+    if(bestD>38){let ang=Math.atan2(best.y-bs.y,best.x-bs.x); let nx=bs.x+Math.cos(ang)*bs.speed, ny=bs.y+Math.sin(ang)*bs.speed; if(!isCollidingWithWall(nx,ny,bs.r)){bs.x=nx; bs.y=ny;} else {let door=getNearestDoor(bs.x,bs.y); let angD=Math.atan2(door.y-bs.y,door.x-bs.x); nx=bs.x+Math.cos(angD)*bs.speed; ny=bs.y+Math.sin(angD)*bs.speed; if(!isCollidingWithWall(nx,ny,bs.r)){bs.x=nx; bs.y=ny;}}} else if(bs.cd<=0){best.hp-=bs.dmg; bs.cd=45;}
+  }else{
+    let tx=owner.x+Math.cos(bs.fAng)*bs.fRad; let ty=owner.y+Math.sin(bs.fAng)*bs.fRad;
+    let dToForm=Math.hypot(tx-bs.x, ty-bs.y);
+    if(dToForm>4){let ang=Math.atan2(ty-bs.y, tx-bs.x); let move=Math.min(bs.speed*0.9, dToForm*0.11); if(move>0.08){let nx=bs.x+Math.cos(ang)*move, ny=bs.y+Math.sin(ang)*move; if(!isCollidingWithWall(nx,ny,bs.r)){bs.x=nx; bs.y=ny;}}}
+    checkTowerBonus(bs);
+    if(bs.cd>0)bs.cd--;
+    let cands=[...commanders,...soldiers]; let effRange=bs.range + (bs.onTower && bs.type=='archer'?80:0);
+    let tgt=null, bestD2=Infinity; cands.forEach(c=>{let d=dist(bs,c); if(d<effRange && d<bestD2){bestD2=d; tgt=c;}});
+    if(tgt&&bs.cd<=0){if(bs.type=='archer') beProjectiles.push({x:bs.x,y:bs.y,tx:tgt.x,ty:tgt.y,dmg:bs.dmg*(bs.onTower?1.2:1),s:5.5}); else tgt.hp-=bs.dmg; bs.cd=bs.type=='archer'?50:40;}
+  }
+  if(bs.cd>0)bs.cd--;
+});
+for(let i=projectiles.length-1;i>=0;i--){let p=projectiles[i],ang=Math.atan2(p.ty-p.y,p.tx-p.x);p.x+=Math.cos(ang)*p.s;p.y+=Math.sin(ang)*p.s;let hit=[...enemies,...bossCommanders,...bossSoldiers].find(en=>dist(p,en)<14);if(hit){hit.hp-=p.dmg;projectiles.splice(i,1);continue;}if(p.x<0||p.x>950||p.y<0||p.y>620)projectiles.splice(i,1);}
+for(let i=eProjectiles.length-1;i>=0;i--){let p=eProjectiles[i],ang=Math.atan2(p.ty-p.y,p.tx-p.x);p.x+=Math.cos(ang)*p.s;p.y+=Math.sin(ang)*p.s;let hit=[...soldiers,...commanders].find(t=>dist(p,t)<16);if(hit){hit.hp-=p.dmg;eProjectiles.splice(i,1);continue;}if(p.x<0||p.x>950||p.y<0||p.y>620)eProjectiles.splice(i,1);}
+for(let i=beProjectiles.length-1;i>=0;i--){let p=beProjectiles[i],ang=Math.atan2(p.ty-p.y,p.tx-p.x);p.x+=Math.cos(ang)*p.s;p.y+=Math.sin(ang)*p.s;let hit=[...soldiers,...commanders].find(t=>dist(p,t)<16);if(hit){hit.hp-=p.dmg;beProjectiles.splice(i,1);continue;}if(p.x<0||p.x>950||p.y<0||p.y>620)beProjectiles.splice(i,1);}
+let beforeCounts={}; commanders.forEach(c=>{beforeCounts[c.id]=soldiers.filter(s=>s.ownerId==c.id).length;});
+soldiers=soldiers.filter(s=>s.hp>0);
+commanders.forEach(c=>{let after=soldiers.filter(s=>s.ownerId==c.id).length; let lost=beforeCounts[c.id]-after; if(lost>0) dead[c.id]+=lost; if(beforeCounts[c.id]!=after) reassignFormation(c.id,soldiers);});
+enemies=enemies.filter(e=>e.hp>0);
+let beforeBoss=bossSoldiers.length; bossSoldiers=bossSoldiers.filter(s=>s.hp>0);
+if(beforeBoss!=bossSoldiers.length){bossCommanders.forEach(b=>{let own=bossSoldiers.filter(s=>s.ownerId==b.id); own.forEach((s,i)=>{s.fAng=(i/own.length)*Math.PI*2;});});}
+bossCommanders=bossCommanders.filter(b=>b.hp>0);
+let deadNow=[]; commanders.forEach(c=>{ if(c.hp<=0){ deadNow.push(c);}});
+deadNow.forEach(dc=>{ let idx=commanders.findIndex(c=>c.id==dc.id); if(idx>=0){ let ownCount=soldiers.filter(s=>s.ownerId==dc.id).length; knockedOut.push({id:dc.id, type:dc.type, maxS: maxS[dc.id]}); soldiers=soldiers.filter(s=>s.ownerId!=dc.id); dead[dc.id]+=ownCount; commanders.splice(idx,1);}});
+let totalPlayers = (picks[2]?2:1); let alivePlayers = commanders.length; let knockedPlayers = knockedOut.length;
+if(alivePlayers==0){ if(totalPlayers==1 || knockedPlayers>=totalPlayers || (totalPlayers==2 && alivePlayers==0)){ gameRunning=false; stopMusic(); document.getElementById('menu').style.display='flex'; document.getElementById('menu').innerHTML='<h2>💀 DERROTA TOTAL! 💀</h2><p>Todos os comandantes caíram - Onda '+wave+'</p><button class=go onclick=location.reload()>🔄 RECOMEÇAR</button>'; playCalmMusic(); return;}}
+if(enemies.length==0 && bossCommanders.length==0 && bossSoldiers.length==0){ gameRunning=false; stopMusic(); showBonusScreen();}
+document.getElementById('fortInfo').innerText = commanders.length==0?'': (commanders.length+' vivos');
+document.getElementById('c1info').innerText=commanders.find(c=>c.id==1)?`🔵 P1 HP:${Math.floor(commanders.find(c=>c.id==1).hp)} 🪖${soldiers.filter(s=>s.ownerId==1).length}/${maxS[1]} ⭐LVL${lvl[1]} ${commanders.find(c=>c.id==1).onTower?'🗼[TORRE]':''}`: (knockedOut.find(k=>k.id==1)?'🔵 P1 💀 CAÍDO':'');
+document.getElementById('c2info').innerText=commanders.find(c=>c.id==2)?`🟣 P2 HP:${Math.floor(commanders.find(c=>c.id==2).hp)} 🪖${soldiers.filter(s=>s.ownerId==2).length}/${maxS[2]} ⭐LVL${lvl[2]} ${commanders.find(c=>c.id==2).onTower?'🗼[TORRE]':''}`: (knockedOut.find(k=>k.id==2)?'🟣 P2 💀 CAÍDO': (picks[2]?'🟣 P2 💀 CAÍDO':''));
+draw();if(gameRunning)requestAnimationFrame(loop);
+}
+function draw(){
+ ctx.clearRect(0,0,950,620);
+ ctx.fillStyle='#8a6a3a'; ctx.fillRect(0,0,950,620);
+ ctx.fillStyle='#c2b280'; ctx.fillRect(FORT.x-FORT.w/2+FORT.wallThick, FORT.y-FORT.h/2+FORT.wallThick, FORT.w-FORT.wallThick*2, FORT.h-FORT.wallThick*2);
+ ctx.fillStyle='#5a3e2b';
+ fortWalls.forEach(w=>{ctx.fillRect(w.x,w.y,w.w,w.h);});
+ doors.forEach(d=>{
+   ctx.fillStyle='#3b2314';
+   if(d.dir=='N' || d.dir=='S'){
+     ctx.fillRect(d.x-4,d.y-2,d.w+8,d.h+4);
+     ctx.fillStyle='#8B4513'; ctx.fillRect(d.x,d.y,d.w,d.h);
+     ctx.fillStyle='#d2a679'; ctx.fillRect(d.x+d.w/2-2,d.y,d.w/2+2,d.h);
+   }else{
+     ctx.fillRect(d.x-2,d.y-4,d.w+4,d.h+8);
+     ctx.fillStyle='#8B4513'; ctx.fillRect(d.x,d.y,d.w,d.h);
+     ctx.fillStyle='#d2a679'; ctx.fillRect(d.x,d.y+d.h/2-2,d.w,d.h/2+2);
+   }
+ });
+ towers.forEach(tw=>{
+   if(tw.type=='keep'){
+     ctx.fillStyle='#4a3020'; ctx.beginPath(); ctx.arc(tw.x,tw.y,tw.r+6,0,6.28); ctx.fill();
+     ctx.fillStyle='#6b4a35'; ctx.beginPath(); ctx.arc(tw.x,tw.y,tw.r,0,6.28); ctx.fill();
+     ctx.fillStyle='#8b6a4a'; ctx.fillRect(tw.x-tw.r+8, tw.y-tw.r+8, tw.r*2-16, tw.r*2-16);
+     ctx.fillStyle='#d2b48c'; ctx.fillRect(tw.x-6, tw.y+tw.r-12, 12, 16);
+     ctx.fillStyle='#fff'; ctx.font='bold 10px Arial'; ctx.fillText('🏰 CENTRO', tw.x-24, tw.y-38);
+   }else{
+     ctx.fillStyle='#3b2314'; ctx.beginPath(); ctx.arc(tw.x,tw.y,tw.r+6,0,6.28); ctx.fill();
+     ctx.fillStyle='#6b4a35'; ctx.beginPath(); ctx.arc(tw.x,tw.y,tw.r,0,6.28); ctx.fill();
+     ctx.fillStyle='#8b6a4a'; ctx.beginPath(); ctx.arc(tw.x,tw.y,tw.r-10,0,6.28); ctx.fill();
+     ctx.fillStyle='#f5deb3';
+     if(tw.id==0){ctx.fillRect(tw.x+14, tw.y+14, 22, 10);}
+     else if(tw.id==1){ctx.fillRect(tw.x-36, tw.y+14, 22, 10);}
+     else if(tw.id==2){ctx.fillRect(tw.x+14, tw.y-24, 22, 10);}
+     else {ctx.fillRect(tw.x-36, tw.y-24, 22, 10);}
+     ctx.fillStyle='#ffd700'; ctx.font='bold 10px Arial'; ctx.fillText('🗼 TORRE', tw.x-18, tw.y+4);
+   }
+ });
+ projectiles.forEach(p=>{ctx.fillStyle='#2a4d14';ctx.beginPath();ctx.arc(p.x,p.y,4,0,6.28);ctx.fill();});
+ eProjectiles.forEach(p=>{ctx.fillStyle='#5a0a0a';ctx.beginPath();ctx.arc(p.x,p.y,3.5,0,6.28);ctx.fill();});
+ beProjectiles.forEach(p=>{ctx.fillStyle='#ff0000';ctx.beginPath();ctx.arc(p.x,p.y,5,0,6.28);ctx.fill(); ctx.fillStyle='#ffff00';ctx.beginPath();ctx.arc(p.x,p.y,2,0,6.28);ctx.fill();});
+ commanders.forEach(c=>{
+   if(c.onTower){ctx.fillStyle='rgba(255,215,0,0.4)'; ctx.beginPath(); ctx.arc(c.x,c.y,28,0,6.28); ctx.fill();}
+   ctx.fillStyle=c.color;ctx.beginPath();ctx.arc(c.x,c.y,c.r,0,6.28);ctx.fill();
+   drawEquipment(c.x,c.y,c.type,lvl[c.id],true,false);
+   if(lvl[c.id]>=2){ctx.fillStyle='#FFD700';ctx.fillRect(c.x-5,c.y-c.r-4,10,3);}
+   ctx.fillStyle='black';ctx.fillRect(c.x-c.r,c.y-c.r-12,c.r*2,4);ctx.fillStyle='lime';ctx.fillRect(c.x-c.r,c.y-c.r-12,c.r*2*(c.hp/c.maxHp),4);
+   if(c.onTower && c.type=='archer'){ctx.fillStyle='#ffd700'; ctx.font='bold 9px Arial'; ctx.fillText('🏹 +80 ALCANCE!', c.x-28, c.y-c.r-18);}
+ });
+ soldiers.forEach(s=>{
+   if(s.onTower){ctx.fillStyle=s.type=='archer'?'rgba(0,255,0,0.35)':'rgba(255,255,255,0.2)'; ctx.beginPath(); ctx.arc(s.x,s.y,22,0,6.28); ctx.fill();}
+   ctx.fillStyle=s.color;ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,6.28);ctx.fill();
+   drawEquipment(s.x,s.y,s.type,lvl[s.ownerId],false,false);
+   ctx.fillStyle='black';ctx.fillRect(s.x-s.r,s.y-s.r-10,s.r*2,3);ctx.fillStyle='lime';ctx.fillRect(s.x-s.r,s.y-s.r-10,s.r*2*(s.hp/s.maxHp),3);
+ });
+ enemies.forEach(e=>{
+   ctx.fillStyle='#b33';ctx.beginPath();ctx.arc(e.x,e.y,e.r,0,6.28);ctx.fill();
+   drawEnemyEquip(e.x,e.y,e.etype);
+   ctx.fillStyle='black';ctx.fillRect(e.x-e.r,e.y-e.r-9,e.r*2,3);ctx.fillStyle='red';ctx.fillRect(e.x-e.r,e.y-e.r-9,e.r*2*(e.hp/e.maxHp),3);
+ });
+ bossCommanders.forEach(b=>{
+   ctx.fillStyle='rgba(255,0,0,0.3)';ctx.beginPath();ctx.arc(b.x,b.y,b.r+12,0,6.28);ctx.fill();
+   ctx.fillStyle=b.color;ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,6.28);ctx.fill();
+   drawEquipment(b.x,b.y,b.type,b.lvl,true,true);
+   ctx.fillStyle='black';ctx.fillRect(b.x-b.r,b.y-b.r-16,b.r*2,5);ctx.fillStyle='#ff0000';ctx.fillRect(b.x-b.r,b.y-b.r-16,b.r*2*(b.hp/b.maxHp),5);
+   ctx.fillStyle='white';ctx.font='bold 10px Arial';ctx.fillText('💀 CHEFE '+b.type.toUpperCase(), b.x-32, b.y-b.r-20);
+ });
+ bossSoldiers.forEach(s=>{
+   ctx.fillStyle=s.color;ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,6.28);ctx.fill();
+   drawEquipment(s.x,s.y,s.type,1,false,true);
+   ctx.fillStyle='black';ctx.fillRect(s.x-s.r,s.y-s.r-10,s.r*2,3);ctx.fillStyle='red';ctx.fillRect(s.x-s.r,s.y-s.r-10,s.r*2*(s.hp/s.maxHp),3);
+ });
+}
+window.addEventListener('load',()=>{playCalmMusic();});
+</script>
+</body>
+</html>
